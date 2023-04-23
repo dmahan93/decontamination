@@ -225,6 +225,12 @@ class BenchmarkCleaner:
         DATA_SIZE = len(ds)
         ids = [i for i in range(len(ds))]
         ds = ds.add_column("__id__", ids)
+        # ds = ds.map(
+        #     lambda _, idx: {"__id__": idx},
+        #     with_indices=True,
+        #     num_proc=self.num_workers,
+        #     desc="Adding index to dataset...",
+        # )
         hashed_ds = ds.map(
             function=hash_content,
             fn_kwargs={"num_perm": self.num_perm},
@@ -236,6 +242,8 @@ class BenchmarkCleaner:
         # remove unused columns
         hashed_ds = hashed_ds.remove_columns([c for c in hashed_ds.column_names if c not in ["__id__", "__signature__"]])
         benchmarks = []
+        print(f"Number of benchmark datasets: {len(self.benchmarks_paths)}")
+        # self.benchmarks_paths = self.benchmarks_paths[:100]
         for path in tqdm(self.benchmarks_paths, desc="Loading benchmark datasets..."):
             benchmarks.append(load_from_disk(path))
         benchmarks = concatenate_datasets(benchmarks)
@@ -266,6 +274,7 @@ class BenchmarkCleaner:
         # Query the MinHashLSH index for each record in the provided dataset against the benchmark datasets.
         queried = hashed_ds.map(
             function=lambda x, y: query_content(x, y, index=minhash),
+            # num_proc=self.num_workers,
             input_columns=[
                 "__id__",
                 "__signature__",
@@ -289,6 +298,8 @@ class BenchmarkCleaner:
             dup_id = process_record(record, check_for_fp, ds, column, benchmarks, self.threshold)
             if dup_id is not None:
                 dup_ids.append(dup_id)
+        # process_record, [(record, check_for_fp, ds, column, benchmarks, threshold) for record in queried
+        # dup_ids = parallelized_function(queried, check_for_fp, ds, column, benchmarks, self.threshold, self.num_workers)
         
         # Filter out the duplicate ids.
         final_data = ds.filter(
